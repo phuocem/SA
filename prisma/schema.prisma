@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  role_id    Int      @id @default(autoincrement())
+  name       String   @unique @db.VarChar(50)
+  created_at DateTime @default(now())
+  users      User[]
+
+  @@map("roles")
+}
+
+model User {
+  user_id       Int      @id @default(autoincrement())
+  role_id       Int
+  name          String   @db.VarChar(100)
+  email         String   @unique @db.VarChar(255)
+  password_hash String   @db.VarChar(255)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  role          Role             @relation(fields: [role_id], references: [role_id], onDelete: Restrict)
+  createdEvents Event[]          @relation("EventCreator")
+  registrations Registration[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+  @@index([email])
+}
+
+model RefreshToken {
+  token_id   Int      @id @default(autoincrement())
+  user_id    Int
+  token      String   @unique @db.VarChar(512)
+  expires_at DateTime
+  revoked    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Event {
+  event_id    Int      @id @default(autoincrement())
+  created_by  Int?
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  start_time  DateTime
+  end_time    DateTime
+  location    String?  @db.VarChar(255)
+  capacity    Int?
+  status      String   @default("draft") // MySQL dùng ENUM, Prisma dùng String + @@enum nếu cần
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  creator       User?            @relation("EventCreator", fields: [created_by], references: [user_id], onDelete: SetNull)
+  registrations Registration[]
+
+  @@map("events")
+  @@index([start_time])
+  @@index([created_by])
+  @@index([status])
+}
+
+model Registration {
+  registration_id Int      @id @default(autoincrement())
+  event_id        Int
+  user_id         Int
+  status          String   @default("registered")
+  qr_code         String?  @unique @db.VarChar(255)
+  checked_in_at   DateTime?
+  created_at      DateTime @default(now())
+
+  event Event @relation(fields: [event_id], references: [event_id], onDelete: Cascade)
+  user  User  @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([event_id, user_id])
+  @@map("registrations")
+  @@index([event_id])
+  @@index([user_id])
+}
+
+// Nếu bạn muốn chính xác 100% với ENUM trong MySQL (tùy chọn, không bắt buộc)
+enum EventStatus {
+  draft
+  published
+  cancelled
+  finished
+}
+
+enum RegistrationStatus {
+  registered
+  cancelled
+  checked_in
+  no_show
+}

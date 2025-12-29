@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ====================== CAMPUS HUB - SUBMISSION #1 ======================
+
+model Role {
+  role_id    Int      @id @default(autoincrement())
+  name       String   @unique @db.VarChar(50)
+  created_at DateTime @default(now())
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  user_id       Int      @id @default(autoincrement())
+  role_id       Int
+  name          String   @db.VarChar(100)
+  email         String   @unique @db.VarChar(255)
+  password_hash String   @db.VarChar(255)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  role          Role           @relation(fields: [role_id], references: [role_id])
+  createdEvents Event[]        @relation("EventCreator")
+  registrations Registration[]
+  refreshTokens RefreshToken[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  token_id   Int      @id @default(autoincrement())
+  user_id    Int
+  token      String   @unique @db.VarChar(512)
+  expires_at DateTime
+  revoked    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id])
+
+  @@map("refresh_tokens")
+}
+
+model Event {
+  event_id    Int      @id @default(autoincrement())
+  created_by  Int? // NULL được → tránh lỗi MySQL
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  start_time  DateTime
+  end_time    DateTime
+  location    String?  @db.VarChar(255)
+  capacity    Int?
+  status      String   @default("draft") // draft, published, cancelled, finished
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  creator       User?          @relation("EventCreator", fields: [created_by], references: [user_id])
+  registrations Registration[]
+
+  @@index([start_time])
+  @@index([created_by])
+  @@index([status])
+  @@map("events")
+}
+
+model Registration {
+  registration_id Int       @id @default(autoincrement())
+  event_id        Int
+  user_id         Int
+  status          String    @default("registered")
+  qr_code         String?   @unique @db.VarChar(255)
+  checked_in_at   DateTime?
+  created_at      DateTime  @default(now())
+
+  event Event @relation(fields: [event_id], references: [event_id])
+  user  User  @relation(fields: [user_id], references: [user_id])
+
+  @@unique([event_id, user_id])
+  @@index([event_id])
+  @@index([user_id])
+  @@map("registrations")
+}
