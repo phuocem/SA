@@ -74,7 +74,7 @@ model Registration {
   registration_id Int      @id @default(autoincrement())
   event_id        Int
   user_id         Int
-  status          String   @default("registered")
+  status          RegistrationStatus @default(registered)
   qr_code         String?  @unique @db.VarChar(255)
   checked_in_at   DateTime?
   created_at      DateTime @default(now())
@@ -86,6 +86,24 @@ model Registration {
   @@map("registrations")
   @@index([event_id])
   @@index([user_id])
+}
+
+model OutboxEvent {
+  id             Int           @id @default(autoincrement())
+  routing_key    String        @db.VarChar(255)
+  aggregate_type String        @db.VarChar(100)
+  aggregate_id   String?       @db.VarChar(100)
+  payload        Json
+  status         OutboxStatus  @default(pending)
+  attempts       Int           @default(0)
+  available_at   DateTime      @default(now())
+  published_at   DateTime?
+  last_error     String?       @db.Text
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+
+  @@map("outbox_events")
+  @@index([status, available_at])
 }
 
 // Nếu bạn muốn chính xác 100% với ENUM trong MySQL (tùy chọn, không bắt buộc)
@@ -101,4 +119,11 @@ enum RegistrationStatus {
   cancelled
   checked_in
   no_show
+}
+
+enum OutboxStatus {
+  pending
+  processing
+  published
+  failed
 }

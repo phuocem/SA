@@ -1,16 +1,14 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { CacheService } from '../../infrastructure/cache/cache.service';
-import { RabbitMQService } from '../../infrastructure/messaging/rabbitmq.service';
+import { OutboxService } from '../../infrastructure/messaging/outbox.service';
 
 @Injectable()
 export class EventsService {
-  private readonly logger = new Logger(EventsService.name);
-
   constructor(
     private prisma: PrismaService,
     private cacheService: CacheService,
-    private rabbitMQService: RabbitMQService,
+    private outboxService: OutboxService,
   ) {}
 
   async findAll(page = 1, size = 10, keyword?: string, showAll = false) {
@@ -120,20 +118,32 @@ export class EventsService {
       throw new BadRequestException(`Thiếu trường bắt buộc: ${missing.join(', ')}`);
     }
 
-    const event = await this.prisma.event.create({
-      data: { ...payload, created_by },
-      include: { creator: { select: { name: true } } },
+    const event = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.event.create({
+        data: { ...payload, created_by },
+        include: { creator: { select: { name: true } } },
+      });
+
+      await this.outboxService.enqueue(
+        {
+          routingKey: 'event.created',
+          aggregateType: 'event',
+          aggregateId: created.event_id,
+          payload: {
+            event_id: created.event_id,
+            name: created.name,
+            start_time: created.start_time.toISOString(),
+            end_time: created.end_time.toISOString(),
+          },
+        },
+        tx,
+      );
+
+      return created;
     });
     
     // Invalidate list cache
     await this.cacheService.delPattern('events:list:*');
-
-    await this.publishEvent('event.created', {
-      event_id: event.event_id,
-      name: event.name,
-      start_time: event.start_time,
-      end_time: event.end_time,
-    });
     
     return event;
   }
@@ -144,22 +154,34 @@ export class EventsService {
       throw new ForbiddenException('Bạn không có quyền chỉnh sửa sự kiện này');
     }
 
-    const event = await this.prisma.event.update({
-      where: { event_id: id },
-      data,
-      include: { creator: { select: { name: true } } },
+    const event = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.event.update({
+        where: { event_id: id },
+        data,
+        include: { creator: { select: { name: true } } },
+      });
+
+      await this.outboxService.enqueue(
+        {
+          routingKey: 'event.updated',
+          aggregateType: 'event',
+          aggregateId: updated.event_id,
+          payload: {
+            event_id: updated.event_id,
+            name: updated.name,
+            start_time: updated.start_time.toISOString(),
+            end_time: updated.end_time.toISOString(),
+          },
+        },
+        tx,
+      );
+
+      return updated;
     });
     
     // Invalidate specific event cache and list cache
     await this.cacheService.del(`events:${id}`);
     await this.cacheService.delPattern('events:list:*');
-
-    await this.publishEvent('event.updated', {
-      event_id: event.event_id,
-      name: event.name,
-      start_time: event.start_time,
-      end_time: event.end_time,
-    });
     
     return event;
   }
@@ -170,25 +192,25 @@ export class EventsService {
       throw new ForbiddenException('Bạn không có quyền xoá sự kiện này');
     }
 
-    await this.prisma.event.delete({ where: { event_id: id } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.event.delete({ where: { event_id: id } });
+
+      await this.outboxService.enqueue(
+        {
+          routingKey: 'event.deleted',
+          aggregateType: 'event',
+          aggregateId: id,
+          payload: { event_id: id },
+        },
+        tx,
+      );
+    });
     
     // Invalidate specific event cache and list cache
     await this.cacheService.del(`events:${id}`);
     await this.cacheService.del(`events:${id}:registrations`);
     await this.cacheService.delPattern('events:list:*');
-
-    await this.publishEvent('event.deleted', {
-      event_id: id,
-    });
     
     return { message: `Event ${id} đã được loại bỏ thành công` };
-  }
-
-  private async publishEvent(routingKey: string, payload: Record<string, unknown>) {
-    try {
-      await this.rabbitMQService.publish(routingKey, payload);
-    } catch (error) {
-      this.logger.warn(`RabbitMQ publish failed for ${routingKey}`, error as Error);
-    }
   }
 }

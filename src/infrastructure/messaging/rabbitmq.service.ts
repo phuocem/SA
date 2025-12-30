@@ -19,9 +19,9 @@ export class RabbitMQService implements OnModuleDestroy {
       return;
     }
 
+    const channel = await this.getChannel();
+    const messageBuffer = Buffer.from(JSON.stringify(payload));
     try {
-      const channel = await this.getChannel();
-      const messageBuffer = Buffer.from(JSON.stringify(payload));
       channel.publish(this.exchange, routingKey, messageBuffer, {
         contentType: 'application/json',
         persistent: true,
@@ -30,6 +30,7 @@ export class RabbitMQService implements OnModuleDestroy {
       this.logger.debug(`Published message to ${this.exchange} with routingKey=${routingKey}`);
     } catch (error) {
       this.logger.warn(`RabbitMQ publish failed for ${routingKey}`, error as Error);
+      throw error;
     }
   }
 
@@ -89,6 +90,10 @@ export class RabbitMQService implements OnModuleDestroy {
     this.channel = await this.connection.createChannel();
     await this.channel.assertExchange(this.exchange, 'topic', { durable: true });
     return this.channel;
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
   }
 
   async onModuleDestroy(): Promise<void> {

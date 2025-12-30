@@ -3,10 +3,10 @@ import { Module } from '@nestjs/common';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
 import { PrismaModule } from '../../infrastructure/prisma/prisma.module';
-import { RabbitMQModule } from '../../infrastructure/messaging/rabbitmq.module';
+import { OutboxModule } from '../../infrastructure/messaging/outbox.module';
 
 @Module({
-  imports: [PrismaModule, RabbitMQModule],      
+  imports: [PrismaModule, OutboxModule],      
   controllers: [EventsController],
   providers: [EventsService],   
 })

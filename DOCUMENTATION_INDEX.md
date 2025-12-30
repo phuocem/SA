@@ -95,6 +95,9 @@ prisma/
 └── generated/                - Prisma generated code
 ```
 
+### Reliability & Messaging
+- `docs/outbox.md` - Outbox pattern, processor config, and operations guide
+
 ## 🚀 Quick Start Guide
 
 ### 1. Initialize System
