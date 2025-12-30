@@ -1,20 +1,20 @@
-# Events Messaging
+# Nhắn tin sự kiện
 
-## Exchange & Routing
+## Exchange & routing
 - Exchange: `campus-hub.events` (topic, durable)
-- Producer emits routing keys:
+- Producer phát các routing key:
   - `event.created`
   - `event.updated`
   - `event.deleted`
 
-## Message Format
-Common fields:
+## Định dạng message
+Trường chung:
 - `event_id`: number
-- `name`: string (for create/update)
-- `start_time`: ISO string (for create/update)
-- `end_time`: ISO string (for create/update)
+- `name`: string (tạo/cập nhật)
+- `start_time`: ISO string (tạo/cập nhật)
+- `end_time`: ISO string (tạo/cập nhật)
 
-Examples:
+Ví dụ:
 ```json
 { "event_id": 12, "name": "Hackathon", "start_time": "2025-12-31T10:00:00Z", "end_time": "2025-12-31T16:00:00Z" }
 ```
@@ -23,29 +23,29 @@ Examples:
 ```
 
 ## Producer (backend)
-- On create → publish `event.created`
-- On update → publish `event.updated`
-- On delete → publish `event.deleted`
-- Implemented in `EventsService` using `RabbitMQService.publish()`.
+- Khi tạo → publish `event.created`
+- Khi cập nhật → publish `event.updated`
+- Khi xoá → publish `event.deleted`
+- Nằm trong `EventsService` dùng `RabbitMQService.publish()`.
 
-## Subscriber (basic built-in)
-- `RabbitMQConsumer` subscribes to `event.*` and logs message payloads (smoke test).
-- Runs on app startup (OnModuleInit).
+## Subscriber (mặc định)
+- `RabbitMQConsumer` subscribe `event.*` và log payload (smoke test).
+- Chạy khi app khởi động (OnModuleInit).
 
-## Retry / Backoff Policy
-- Publisher: fire-and-forget; on publish error, log warning and continue.
-- Consumer: `nack` without requeue on handler error to avoid infinite loops. For production, replace with DLQ + retry/backoff strategy (e.g., exponential backoff with delayed exchanges).
+## Chính sách retry / backoff
+- Publisher: fire-and-forget; lỗi publish thì log cảnh báo rồi tiếp tục.
+- Consumer: `nack` không requeue khi handler lỗi để tránh vòng lặp vô hạn. Production nên dùng DLQ + retry/backoff (ví dụ backoff lũy thừa với delayed exchange).
 
-## Local Testing Steps
-1. Start RabbitMQ (Docker): `docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management`
-2. Set env if needed: `RABBITMQ_URL=amqp://localhost`, `RABBITMQ_EXCHANGE=campus-hub.events`.
+## Test local
+1. Khởi chạy RabbitMQ (Docker): `docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management`
+2. Thiết lập env nếu cần: `RABBITMQ_URL=amqp://localhost`, `RABBITMQ_EXCHANGE=campus-hub.events`.
 3. Start app: `npm run start:dev`.
-4. Trigger events via API:
+4. Gọi API tạo sự kiện:
    - `POST /events` (create)
    - `PUT /events/:id` (update)
    - `DELETE /events/:id` (delete)
-5. Observe logs from `RabbitMQConsumer` or bind a queue in RabbitMQ UI (exchange `campus-hub.events`, routing key `event.*`).
+5. Xem log từ `RabbitMQConsumer` hoặc bind queue trong RabbitMQ UI (exchange `campus-hub.events`, routing key `event.*`).
 
-## Operational Notes
-- Exchange asserted as durable topic; auto-queue used by built-in consumer is non-durable/exclusive (for testing).
-- For real consumers, create durable queues and bind with explicit routing keys; implement idempotency and retries.
+## Ghi chú vận hành
+- Exchange được assert là topic durable; queue tự động của consumer mặc định là non-durable/exclusive (chỉ để test).
+- Consumer thật nên tạo queue durable, bind routing key rõ ràng; triển khai idempotency và retry.

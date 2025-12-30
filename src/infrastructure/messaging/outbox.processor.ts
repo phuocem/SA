@@ -65,7 +65,14 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
       if (!claimed) continue;
 
       try {
-        await this.rabbitMQService.publish(event.routing_key, event.payload as Record<string, unknown>);
+        const messageId = `outbox-${event.id}`;
+        await this.rabbitMQService.publish(event.routing_key, event.payload as Record<string, unknown>, {
+          messageId,
+          headers: {
+            aggregate_type: event.aggregate_type,
+            aggregate_id: event.aggregate_id,
+          },
+        });
         await this.outboxService.markPublished(event.id);
       } catch (error) {
         const attempts = event.attempts + 1;

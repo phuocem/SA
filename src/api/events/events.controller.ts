@@ -37,6 +37,34 @@ export class EventsController {
     return this.eventsService.findAll(pageNum, sizeNum, keyword, false);
   }
 
+  @Get('me')
+  @ApiBearerAuth()
+  @Authenticated()
+  @ApiOperation({ summary: 'Lấy sự kiện do chính mình tạo (có phân trang)' })
+  @ApiQuery({ name: 'page', required: false, example: 1, description: 'Trang (mặc định 1)' })
+  @ApiQuery({ name: 'size', required: false, example: 10, description: 'Số bản ghi mỗi trang (mặc định 10)' })
+  @ApiQuery({ name: 'keyword', required: false, example: 'meetup', description: 'Từ khoá tìm kiếm' })
+  async findMine(
+    @Query('page') page = '1',
+    @Query('size') size = '10',
+    @Query('keyword') keyword: string | undefined,
+    @CurrentUser() user: any,
+  ) {
+    const pageNum = +page || 1;
+    const sizeNum = +size || 10;
+    return this.eventsService.findMine(user?.user_id, pageNum, sizeNum, keyword, false);
+  }
+
+  @Get('me/all')
+  @ApiBearerAuth()
+  @Authenticated()
+  @ApiOperation({ summary: 'Lấy tất cả sự kiện do chính mình tạo (không phân trang)' })
+  async findMineAll(
+    @CurrentUser() user: any,
+  ) {
+    return this.eventsService.findMine(user?.user_id, 1, 0, undefined, true);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Lấy tất cả sự kiện (không phân trang)' })
   async findAllNoPaging() {

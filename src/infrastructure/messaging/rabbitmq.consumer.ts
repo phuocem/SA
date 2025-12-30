@@ -15,6 +15,6 @@ export class RabbitMQConsumer implements OnModuleInit {
     // Subscribe to all event-related routing keys
     await this.rabbit.subscribe('event.*', async (msg) => {
       this.logger.log(`Received message: ${JSON.stringify(msg)}`);
-    });
+    }, { consumerName: 'log-listener', idempotent: true });
   }
 }

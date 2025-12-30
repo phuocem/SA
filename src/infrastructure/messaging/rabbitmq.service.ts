@@ -1,5 +1,12 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Channel, Connection, ConsumeMessage, connect } from 'amqplib';
+import { MessageIdempotencyService } from './message-idempotency.service';
+
+export interface SubscribeOptions {
+  consumerName?: string;
+  idempotent?: boolean;
+  onDuplicate?: 'ack' | 'nack' | 'requeue';
+}
 
 @Injectable()
 export class RabbitMQService implements OnModuleDestroy {
@@ -13,7 +20,13 @@ export class RabbitMQService implements OnModuleDestroy {
   private readonly url = process.env.RABBITMQ_URL || 'amqp://localhost';
   private readonly exchange = process.env.RABBITMQ_EXCHANGE || 'campus-hub.events';
 
-  async publish(routingKey: string, payload: Record<string, unknown>): Promise<void> {
+  constructor(private readonly idempotencyService: MessageIdempotencyService) {}
+
+  async publish(
+    routingKey: string,
+    payload: Record<string, unknown>,
+    options?: { messageId?: string; headers?: Record<string, unknown> },
+  ): Promise<void> {
     if (!this.enabled) {
       this.logger.debug('RabbitMQ disabled; skipping publish');
       return;
@@ -26,6 +39,8 @@ export class RabbitMQService implements OnModuleDestroy {
         contentType: 'application/json',
         persistent: true,
         timestamp: Date.now(),
+        messageId: options?.messageId,
+        headers: options?.headers,
       });
       this.logger.debug(`Published message to ${this.exchange} with routingKey=${routingKey}`);
     } catch (error) {
@@ -37,6 +52,7 @@ export class RabbitMQService implements OnModuleDestroy {
   async subscribe(
     routingKey: string,
     handler: (msg: any, raw: ConsumeMessage) => Promise<void> | void,
+    options?: SubscribeOptions,
   ): Promise<void> {
     if (!this.enabled) {
       this.logger.debug('RabbitMQ disabled; skipping subscription');
@@ -50,6 +66,21 @@ export class RabbitMQService implements OnModuleDestroy {
 
       channel.consume(queue.queue, async (msg) => {
         if (!msg) return;
+        const consumerName = options?.consumerName ?? routingKey;
+        const messageId = msg.properties.messageId || (msg.properties.headers?.['x-message-id'] as string | undefined);
+
+        if (options?.idempotent && messageId) {
+          const fresh = await this.idempotencyService.ensure(messageId, consumerName);
+          if (!fresh) {
+            this.logger.log(`Skip duplicate message consumer=${consumerName} id=${messageId}`);
+            const action = options.onDuplicate ?? 'ack';
+            if (action === 'ack') channel.ack(msg);
+            else if (action === 'requeue') channel.nack(msg, false, true);
+            else channel.nack(msg, false, false);
+            return;
+          }
+        }
+
         try {
           const content = msg.content.length ? JSON.parse(msg.content.toString()) : {};
           await handler(content, msg);

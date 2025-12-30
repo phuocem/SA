@@ -97,6 +97,16 @@ prisma/
 
 ### Reliability & Messaging
 - `docs/outbox.md` - Outbox pattern, processor config, and operations guide
+- `docs/saga.md` - Mini saga helper for multi-step flows with compensations
+- `docs/async-consistency.md` - Async messaging, consistency model, and ops queries
+- `docs/consistency.md` - Nhất quán tổng thể, sơ đồ outbox, saga, retry/backoff
+
+### Runbook & Vận hành
+- `docs/runbook.md` - Hướng dẫn chạy và kiểm thử cục bộ
+
+### Architecture & Decisions
+- `docs/sad.md` - Software Architecture Document (overview)
+- `docs/adr-index.md` - ADR index for key decisions
 
 ## 🚀 Quick Start Guide
 

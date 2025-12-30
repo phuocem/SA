@@ -1,10 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { VersioningType } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors(); // cho Postman gọi được
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+
   const config = new DocumentBuilder()
     .setTitle('CampusHub API')
     .setDescription('Campus Hub backend API documentation')
@@ -16,7 +19,7 @@ async function bootstrap() {
   SwaggerModule.setup('api', app, documentFactory);
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port);
-  console.log(`CampusHub API đang chạy tại: http://localhost:${port}`);
+  console.log(`CampusHub API đang chạy tại: http://localhost:${port}/v1`);
 
 }
 bootstrap();

@@ -1,13 +1,13 @@
-# Seeded Admin Account
+# Tài khoản admin seed sẵn
 
-When the database has no users, the seed script creates a default admin user.
+Khi database chưa có user, script seed sẽ tạo sẵn một admin mặc định.
 
 - Email: admin@campushub.local
-- Password: CampusHub!234
+- Mật khẩu: CampusHub!234
 - Role: admin
 
-Notes:
-- Password is stored hashed (bcrypt, 10 rounds) in the database.
-- If any user already exists, the seed skips creating this account.
-- Seed script: prisma/seed.ts
-- Run: `npx prisma db seed` (or your project’s seed command). Ensure `DATABASE_URL` is set.
+Ghi chú:
+- Mật khẩu lưu dạng hash (bcrypt, 10 rounds).
+- Nếu đã có user, seed sẽ bỏ qua không tạo nữa.
+- Script seed: `prisma/seed.ts`
+- Chạy: `npx prisma db seed` (hoặc lệnh seed của dự án); nhớ cấu hình `DATABASE_URL`.

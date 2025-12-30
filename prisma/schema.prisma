@@ -77,6 +77,7 @@ model Registration {
   status          RegistrationStatus @default(registered)
   qr_code         String?  @unique @db.VarChar(255)
   checked_in_at   DateTime?
+  cancellation_count Int   @default(0)
   created_at      DateTime @default(now())
 
   event Event @relation(fields: [event_id], references: [event_id], onDelete: Cascade)
@@ -104,6 +105,17 @@ model OutboxEvent {
 
   @@map("outbox_events")
   @@index([status, available_at])
+}
+
+model MessageConsumption {
+  id           Int      @id @default(autoincrement())
+  consumer     String   @db.VarChar(100)
+  message_id   String   @db.VarChar(255)
+  processed_at DateTime @default(now())
+  created_at   DateTime @default(now())
+
+  @@unique([consumer, message_id])
+  @@map("message_consumptions")
 }
 
 // Nếu bạn muốn chính xác 100% với ENUM trong MySQL (tùy chọn, không bắt buộc)

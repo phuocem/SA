@@ -1,21 +1,21 @@
-# Security Spec
+# Đặc tả bảo mật
 
-## Authentication Flow
-1. **Register**: `POST /auth/register` → create user, default role `user` (role_id=3).
-2. **Login**: `POST /auth/login` → returns `access_token` (15m) and `refresh_token` (7d).
-3. **Protected requests**: Send header `Authorization: Bearer <access_token>`.
-4. **Refresh**: `POST /auth/refresh` with `refresh_token` to obtain new tokens (rotation).
-5. **Logout**: `POST /auth/logout` invalidates refresh token.
+## Luồng xác thực
+1. **Đăng ký**: `POST /auth/register` → tạo user, mặc định role `user` (role_id=3).
+2. **Đăng nhập**: `POST /auth/login` → trả `access_token` (15 phút) và `refresh_token` (7 ngày).
+3. **Gọi API bảo vệ**: gửi header `Authorization: Bearer <access_token>`.
+4. **Làm mới**: `POST /auth/refresh` kèm `refresh_token` để nhận token mới (rotation).
+5. **Đăng xuất**: `POST /auth/logout` thu hồi refresh token.
 
 ## Roles
-- `admin`: full access.
-- `staff`: elevated access (manage events, view users).
-- `user`: basic access.
+- `admin`: toàn quyền.
+- `staff`: quyền nâng cao (quản lý sự kiện, xem user).
+- `user`: quyền cơ bản.
 
-Role hierarchy: `admin > staff > user` (inheritance).
+Thứ bậc: `admin > staff > user` (kế thừa xuống).
 
-## Protected Endpoints (examples)
-- Admin only:
+## Endpoint bảo vệ (ví dụ)
+- Chỉ admin:
   - `GET /roles`
   - `GET /roles/:id`
   - `POST /users/:id/role`
@@ -25,25 +25,25 @@ Role hierarchy: `admin > staff > user` (inheritance).
   - `GET /users`
   - `POST /events`, `PUT /events/:id`, `DELETE /events/:id`
   - `POST /cache/events/clear`
-- Authenticated (any role):
+- Đã đăng nhập (mọi role):
   - `GET /users/me`
   - `GET /events`
   - `GET /events/:id`
   - `GET /events/:id/registrations`
 
-## Guards & Decorators
-- `JwtAuthGuard` for authentication.
-- `@RequireRole(...)` with `RolesGuard` for authorization.
-- `@NoCache()` to disable HTTP caching on sensitive endpoints.
+## Guards & Decorator
+- `JwtAuthGuard` cho xác thực.
+- `@RequireRole(...)` + `RolesGuard` cho phân quyền.
+- `@NoCache()` tắt HTTP caching ở endpoint nhạy cảm.
 
-## Tokens
-- Access: short-lived (15 minutes), used for every request.
-- Refresh: long-lived (7 days), stored server-side, rotated on refresh.
+## Token
+- Access: ngắn hạn (15 phút), gửi mỗi request.
+- Refresh: dài hạn (7 ngày), lưu server-side, xoay vòng khi refresh.
 
-## Error Cases
-- Missing/invalid token → 401.
-- Insufficient role → 403.
+## Lỗi thường gặp
+- Thiếu/sai token → 401.
+- Không đủ quyền → 403.
 
-## Storage
-- Users and roles in MySQL via Prisma.
-- Refresh tokens persisted (revoked on logout/rotation).
+## Lưu trữ
+- User và role trong MySQL qua Prisma.
+- Refresh token lưu trong DB (thu hồi khi logout/rotation).

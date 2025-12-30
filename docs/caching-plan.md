@@ -1,31 +1,35 @@
-# Caching Plan
+# Kế hoạch Caching
 
 ## Cache Keys & TTL
-- Events list: `events:list:<page>:<size>:<keyword>` — TTL 120s
-- Event detail: `events:<id>` — TTL 300s
-- Event registrations: `events:<id>:registrations` — TTL 60s
-- Roles list: `roles:all` — TTL 600s
-- Roles detail: `roles:<id>` — TTL 600s
+- Danh sách sự kiện: `events:list:<page>:<size>:<keyword>` — TTL 120s (xóa khi create/update/delete)
+- Chi tiết sự kiện: `events:<id>` — TTL 300s (xóa khi update/delete)
+- Danh sách đăng ký sự kiện: `events:<id>:registrations` — TTL 60s (xóa khi có thay đổi đăng ký)
+- Danh sách role: `roles:all` — TTL 600s (xóa khi đổi role)
+- Chi tiết role: `roles:<id>` — TTL 600s (xóa khi đổi role)
+- Hồ sơ người dùng: `users:me:<userId>` — TTL 120s (xóa khi cập nhật hồ sơ)
 
-## Invalidation Strategy
-- On create/update/delete event:
-  - `del events:<id>` (where applicable)
+## Chiến lược xóa cache
+- Khi tạo/cập nhật/xóa sự kiện:
+  - `del events:<id>` (nếu có)
   - `del events:<id>:registrations`
   - `delPattern events:list:*`
-- On registrations change:
+- Khi thay đổi đăng ký:
   - `del events:<eventId>:registrations`
-- On roles change (seed/admin ops):
+- Khi thay đổi role (seed/admin):
   - `del roles:all`
   - `del roles:<id>`
+- Khi cập nhật hồ sơ người dùng:
+  - `del users:me:<userId>`
 
 ## HTTP Caching
-- Interceptor adds ETag + Cache-Control.
-- Defaults (examples):
+- Interceptor thêm ETag + Cache-Control.
+- Mặc định (ví dụ):
   - `/events` → `public, max-age=300`
   - `/roles` → `public, max-age=600`
   - `/users/me` → `no-cache, no-store` (@NoCache)
-- 304 returned when `If-None-Match` matches server ETag.
+- Trả 304 khi `If-None-Match` khớp ETag trên server.
 
-## Notes
-- Cache store: in-memory (cache-manager). Redis can be configured via store if needed.
-- Pattern deletion for in-memory is best-effort; consider explicit keys or Redis SCAN in production.
+## Ghi chú
+- Cache store: in-memory (cache-manager). Có thể cấu hình Redis nếu cần.
+- Xóa theo pattern trong in-memory chỉ best-effort; production nên dùng key cụ thể hoặc SCAN cẩn trọng với Redis.
+- Hạn chế `delPattern` rộng trên Redis production; ưu tiên key cụ thể.

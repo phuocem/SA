@@ -11,6 +11,48 @@ export class EventsService {
     private outboxService: OutboxService,
   ) {}
 
+  async findMine(userId: number, page = 1, size = 10, keyword?: string, showAll = false) {
+    if (!userId || userId <= 0) {
+      throw new BadRequestException('Thiếu hoặc sai userId');
+    }
+
+    const cacheKey = `events:mine:${userId}:${showAll ? 'all' : `${page}:${size}`}:${keyword || 'all'}`;
+
+    return this.cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const skip = showAll ? undefined : (page - 1) * size;
+        const take = showAll ? undefined : size;
+        const trimmed = typeof keyword === 'string' ? keyword.trim() : undefined;
+        const where = {
+          created_by: userId,
+          ...(trimmed
+            ? {
+                OR: [
+                  { name: { contains: trimmed } },
+                  { description: { contains: trimmed } },
+                ],
+              }
+            : {}),
+        };
+
+        const [data, total] = await Promise.all([
+          this.prisma.event.findMany({
+            where,
+            skip,
+            take,
+            include: { creator: { select: { name: true } } },
+            orderBy: { start_time: 'desc' },
+          }),
+          this.prisma.event.count({ where }),
+        ]);
+
+        return { data, total, page: showAll ? 1 : +page, size: showAll ? total : +size };
+      },
+      120000,
+    );
+  }
+
   async findAll(page = 1, size = 10, keyword?: string, showAll = false) {
     const cacheKey = `events:list:${page}:${size}:${keyword || 'all'}:${showAll ? 'all' : 'page'}`;
     
@@ -144,6 +186,7 @@ export class EventsService {
     
     // Invalidate list cache
     await this.cacheService.delPattern('events:list:*');
+    await this.cacheService.delPattern(`events:mine:${created_by}:*`);
     
     return event;
   }
@@ -182,6 +225,9 @@ export class EventsService {
     // Invalidate specific event cache and list cache
     await this.cacheService.del(`events:${id}`);
     await this.cacheService.delPattern('events:list:*');
+    if (existing.created_by) {
+      await this.cacheService.delPattern(`events:mine:${existing.created_by}:*`);
+    }
     
     return event;
   }
@@ -210,6 +256,9 @@ export class EventsService {
     await this.cacheService.del(`events:${id}`);
     await this.cacheService.del(`events:${id}:registrations`);
     await this.cacheService.delPattern('events:list:*');
+    if (existing.created_by) {
+      await this.cacheService.delPattern(`events:mine:${existing.created_by}:*`);
+    }
     
     return { message: `Event ${id} đã được loại bỏ thành công` };
   }

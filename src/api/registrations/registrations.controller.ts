@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Param, Post, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Param, Post, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { Authenticated } from '../auth/decorators/authenticated.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -34,5 +34,27 @@ export class RegistrationsController {
     }
 
     return this.registrationsService.registerForEvent(eventIdNum, userId);
+  }
+
+  @Delete(':eventId/register')
+  @ApiBearerAuth()
+  @Authenticated()
+  @ApiOperation({ summary: 'Huỷ đăng ký tham gia sự kiện' })
+  @ApiParam({ name: 'eventId', type: Number, description: 'ID của sự kiện' })
+  async cancel(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: any,
+  ) {
+    const eventIdNum = Number(eventId);
+    if (!Number.isInteger(eventIdNum) || eventIdNum <= 0) {
+      throw new BadRequestException('eventId is invalid');
+    }
+
+    const userId = user?.user_id;
+    if (!userId) {
+      throw new UnauthorizedException('Login required');
+    }
+
+    return this.registrationsService.cancelRegistration(eventIdNum, userId);
   }
 }

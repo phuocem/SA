@@ -1,35 +1,41 @@
-# Outbox Pattern Guide
+# Hướng dẫn Outbox Pattern
 
-This project now uses an Outbox pattern to guarantee reliable event publishing to RabbitMQ even when the broker is down or network blips occur.
+Hệ thống dùng Outbox để đảm bảo gửi sự kiện tới RabbitMQ ngay cả khi broker tạm thời gián đoạn.
 
-## What was added
-- **Database**: `outbox_events` table stores pending events with status, attempts, and backoff timestamps.
-- **Processor**: A background polling loop flushes pending rows to RabbitMQ with exponential backoff and max-attempt guard.
-- **Service**: `OutboxService` lets features enqueue events inside the same database transaction that mutates business data.
+## Đã bổ sung
+- **Database**: bảng `outbox_events` lưu sự kiện pending với trạng thái, số lần thử và thời điểm backoff.
+- **Processor**: vòng lặp nền quét hàng đợi và publish với backoff + giới hạn số lần thử.
+- **Service**: `OutboxService` cho phép enqueue ngay trong cùng transaction với nghiệp vụ.
+- **Idempotency cho consumer**: thông điệp được khử trùng theo consumer qua bảng `message_consumptions` (khóa `consumer + messageId`).
 
-## How it works
-1. Your feature writes domain data and calls `OutboxService.enqueue(...)` in the **same transaction**.
-2. The outbox processor (interval worker) pulls `pending` rows ordered by `id`, claims them (`processing`), and publishes to RabbitMQ.
-3. On success the row becomes `published`; on failure attempts are incremented and `available_at` is pushed forward using exponential backoff. After `OUTBOX_MAX_ATTEMPTS` the row is marked `failed` for manual review.
+## Cách hoạt động
+1. Nghiệp vụ ghi dữ liệu và gọi `OutboxService.enqueue(...)` **trong cùng transaction**.
+2. Processor lấy các hàng `pending` theo thứ tự `id`, claim (`processing`) và publish RabbitMQ.
+3. Thành công → chuyển `published`; lỗi → tăng attempts, đẩy `available_at` theo backoff. Quá `OUTBOX_MAX_ATTEMPTS` → `failed` để rà soát thủ công.
 
-## Configuration
-Environment variables (defaults in parentheses):
-- `RABBITMQ_ENABLED` (`false`): Enable RabbitMQ client and outbox delivery.
+## Cấu hình
+Biến môi trường (mặc định trong ngoặc):
+- `RABBITMQ_ENABLED` (`false`): bật RabbitMQ client và outbox delivery.
 - `RABBITMQ_URL` (`amqp://localhost`), `RABBITMQ_EXCHANGE` (`campus-hub.events`).
-- `OUTBOX_PROCESSOR_ENABLED` (`true`): Turn processor on/off.
-- `OUTBOX_POLL_INTERVAL_MS` (`5000`): Polling interval.
-- `OUTBOX_BATCH_SIZE` (`20`): Max rows per flush.
-- `OUTBOX_MAX_ATTEMPTS` (`8`): After this, status becomes `failed`.
-- `OUTBOX_BACKOFF_BASE_MS` (`2000`), `OUTBOX_MAX_BACKOFF_MS` (`60000`): Exponential backoff window.
+- `OUTBOX_PROCESSOR_ENABLED` (`true`): bật/tắt processor.
+- `OUTBOX_POLL_INTERVAL_MS` (`5000`): chu kỳ quét.
+- `OUTBOX_BATCH_SIZE` (`20`): số bản ghi mỗi lần quét.
+- `OUTBOX_MAX_ATTEMPTS` (`8`): quá số này chuyển `failed`.
+- `OUTBOX_BACKOFF_BASE_MS` (`2000`), `OUTBOX_MAX_BACKOFF_MS` (`60000`): cửa sổ backoff lũy thừa.
 
-## Deploy & migrate
-1. Create the table: `npx prisma migrate deploy` (or `prisma migrate dev` for dev). The migration file is at `prisma/migrations/20251230000000_outbox_events/migration.sql`.
-2. Regenerate Prisma client after schema changes: `npx prisma generate`.
-3. Start the app with RabbitMQ enabled: `RABBITMQ_ENABLED=true npm run start:dev`.
+## Triển khai & migrate
+1. Tạo bảng: `npx prisma migrate deploy` (hoặc `prisma migrate dev` cho dev). Migration tại `prisma/migrations/20251230000000_outbox_events/migration.sql`.
+2. Regenerate Prisma client: `npx prisma generate`.
+3. Chạy app với RabbitMQ: `RABBITMQ_ENABLED=true npm run start:dev`.
 
-## Using the outbox in code
-- Import `OutboxService` in your module and inject it into the service layer.
-- Wrap data changes and `enqueue` in the same Prisma transaction:
+### Tiêu thụ idempotent
+- Outbox publish với `messageId=outbox-{outbox_event_id}` và header `aggregate_type`, `aggregate_id`.
+- Consumer bật khử trùng bằng `subscribe(..., { consumerName: 'my-consumer', idempotent: true })`; mặc định duplicate sẽ ACK (có thể đổi bằng `onDuplicate`).
+- Lưu trữ: bảng `message_consumptions` ghi lại message đã xử lý theo consumer.
+
+## Dùng outbox trong code
+- Import `OutboxService` vào module, inject vào service.
+- Gói dữ liệu và `enqueue` trong cùng Prisma transaction:
 
 ```typescript
 const result = await this.prisma.$transaction(async (tx) => {
@@ -44,13 +50,13 @@ const result = await this.prisma.$transaction(async (tx) => {
 });
 ```
 
-## Operating the outbox
-- **Check pending**: `SELECT * FROM outbox_events WHERE status = 'pending' ORDER BY available_at;`
-- **Retry failed rows**: set `status='pending', attempts=0, available_at=NOW()` for the chosen `id` values, then let the processor pick them up.
-- **Inspect last error**: look at the `last_error` column to see why delivery failed.
-- **Disable temporarily**: set `OUTBOX_PROCESSOR_ENABLED=false` (messages will accumulate with `pending` status until re-enabled).
+## Vận hành outbox
+- **Xem pending**: `SELECT * FROM outbox_events WHERE status = 'pending' ORDER BY available_at;`
+- **Retry bản ghi failed**: đặt `status='pending', attempts=0, available_at=NOW()` cho các `id` cần retry, processor sẽ tự xử lý.
+- **Xem lỗi cuối**: đọc cột `last_error` để biết lý do fail.
+- **Tạm dừng**: đặt `OUTBOX_PROCESSOR_ENABLED=false` (message sẽ tích tụ ở `pending`).
 
-## Troubleshooting
-- If RabbitMQ is disabled, rows stay `pending` until it is enabled; this is expected.
-- If no rows are moving, verify the processor interval env vars and that `OutboxProcessor` is registered (loaded via `OutboxModule`).
-- Keep `OUTBOX_MAX_ATTEMPTS` reasonable to avoid hot loops; use backoff settings to throttle.
+## Khắc phục sự cố
+- RabbitMQ tắt → bản ghi ở `pending` đến khi bật lại, đây là hành vi kỳ vọng.
+- Không thấy bản ghi dịch chuyển → kiểm tra biến chu kỳ poll và OutboxProcessor đã được load qua `OutboxModule`.
+- Giữ `OUTBOX_MAX_ATTEMPTS` hợp lý; tinh chỉnh backoff để tránh vòng lặp nóng.
