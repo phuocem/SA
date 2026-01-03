@@ -13,6 +13,8 @@ export class RabbitMQService implements OnModuleDestroy {
   private readonly logger = new Logger(RabbitMQService.name);
   private connection?: Connection;
   private channel?: Channel;
+  private channelPromise?: Promise<Channel>;
+  private readonly subscribedConsumers = new Set<string>();
 
   // Allow disabling RabbitMQ via env for local/dev where broker isn't available
   // Enabled only when explicitly set to "true" to avoid noisy connection errors in dev
@@ -61,12 +63,22 @@ export class RabbitMQService implements OnModuleDestroy {
 
     try {
       const channel = await this.getChannel();
-      const queue = await channel.assertQueue('', { exclusive: true, durable: false });
-      await channel.bindQueue(queue.queue, this.exchange, routingKey);
+      const consumerName = options?.consumerName ?? routingKey;
 
-      channel.consume(queue.queue, async (msg) => {
+      // Avoid duplicate subscriptions creating extra queues/consumers
+      if (this.subscribedConsumers.has(consumerName)) {
+        this.logger.debug(`Skip duplicate subscription for consumer=${consumerName}`);
+        return;
+      }
+      this.subscribedConsumers.add(consumerName);
+
+      // Use stable, durable queue per consumer to avoid churn
+      const queueName = `ch-${consumerName}`;
+      await channel.assertQueue(queueName, { exclusive: false, durable: true, autoDelete: false });
+      await channel.bindQueue(queueName, this.exchange, routingKey);
+
+      channel.consume(queueName, async (msg) => {
         if (!msg) return;
-        const consumerName = options?.consumerName ?? routingKey;
         const messageId = msg.properties.messageId || (msg.properties.headers?.['x-message-id'] as string | undefined);
 
         if (options?.idempotent && messageId) {
@@ -91,7 +103,7 @@ export class RabbitMQService implements OnModuleDestroy {
         }
       });
 
-      this.logger.log(`Subscribed queue=${queue.queue} binding=${routingKey} on exchange=${this.exchange}`);
+      this.logger.log(`Subscribed queue=${queueName} binding=${routingKey} on exchange=${this.exchange}`);
     } catch (error) {
       this.logger.warn(`RabbitMQ subscribe failed for ${routingKey}`, error as Error);
     }
@@ -106,21 +118,30 @@ export class RabbitMQService implements OnModuleDestroy {
       return this.channel;
     }
 
-    this.connection = await connect(this.url);
-    this.connection.on('error', (err) => {
-      this.logger.error('RabbitMQ connection error', err);
-      this.connection = undefined;
-      this.channel = undefined;
-    });
-    this.connection.on('close', () => {
-      this.logger.warn('RabbitMQ connection closed');
-      this.connection = undefined;
-      this.channel = undefined;
-    });
+    if (!this.channelPromise) {
+      this.channelPromise = (async () => {
+        this.connection = await connect(this.url);
+        this.connection.on('error', (err) => {
+          this.logger.error('RabbitMQ connection error', err);
+          this.connection = undefined;
+          this.channel = undefined;
+          this.channelPromise = undefined;
+        });
+        this.connection.on('close', () => {
+          this.logger.warn('RabbitMQ connection closed');
+          this.connection = undefined;
+          this.channel = undefined;
+          this.channelPromise = undefined;
+        });
 
-    this.channel = await this.connection.createChannel();
-    await this.channel.assertExchange(this.exchange, 'topic', { durable: true });
-    return this.channel;
+        const ch = await this.connection.createChannel();
+        await ch.assertExchange(this.exchange, 'topic', { durable: true });
+        this.channel = ch;
+        return ch;
+      })();
+    }
+
+    return this.channelPromise;
   }
 
   isEnabled(): boolean {

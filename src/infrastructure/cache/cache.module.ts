@@ -9,7 +9,7 @@ import { HttpCacheInterceptor } from './http-cache.interceptor';
   imports: [
     NestCacheModule.register({
       isGlobal: true,
-      ttl: 300000, // 5 minutes default
+      ttl: 300000, // 5 minutes default (milliseconds; cache-manager expects ms)
       max: 100, // max items in cache
     }),
   ],

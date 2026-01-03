@@ -49,20 +49,19 @@ export class HttpCacheInterceptor implements NestInterceptor {
           return data;
         }
 
-        // Generate ETag from response data
+        // Generate ETag from response data and set header (do this before comparison so client sees it on 304)
         const responseBody = JSON.stringify(data);
         const responseETag = etag(responseBody);
+        response.setHeader('ETag', responseETag);
 
         // Check if client has valid cached version
         const clientETag = request.headers['if-none-match'];
         if (clientETag === responseETag) {
-          // Client has valid cache, return 304 Not Modified
+          // Client has valid cache, return 304 Not Modified with no body
           response.status(304);
+          response.end();
           return null;
         }
-
-        // Set ETag header
-        response.setHeader('ETag', responseETag);
 
         // Set Cache-Control based on decorator or URL pattern
         const cacheControl = this.getCacheControl(request.url, cacheMetadata);

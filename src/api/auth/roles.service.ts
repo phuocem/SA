@@ -49,7 +49,7 @@ export class RolesService {
           },
         });
       },
-      600000, // 10 minutes - roles rarely change
+      600000, // 10 minutes (ms) - roles rarely change
     );
   }
 
@@ -73,7 +73,7 @@ export class RolesService {
           },
         });
       },
-      600000, // 10 minutes
+      600000, // 10 minutes (ms)
     );
   }
 

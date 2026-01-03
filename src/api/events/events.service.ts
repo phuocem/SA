@@ -49,7 +49,7 @@ export class EventsService {
 
         return { data, total, page: showAll ? 1 : +page, size: showAll ? total : +size };
       },
-      120000,
+      120000, // 120s (ms)
     );
   }
 
@@ -88,7 +88,7 @@ export class EventsService {
 
         return { data, total, page: useAll ? 1 : +page, size: useAll ? total : +size };
       },
-      120000, // 2 minutes
+      120000, // 2 minutes (ms)
     );
   }
 
@@ -104,7 +104,7 @@ export class EventsService {
           include: { creator: { select: { name: true, email: true } } },
         });
       },
-      300000, // 5 minutes
+      300000, // 5 minutes (ms)
     );
   }
 
@@ -146,7 +146,7 @@ export class EventsService {
           user: { name: r.name, email: r.email },
         }));
       },
-      60000, // 1 minute
+      60000, // 1 minute (ms)
     );
   }
 
@@ -233,7 +233,13 @@ export class EventsService {
   }
 
   async remove(id: number, userId?: number) {
-    const existing = await this.prisma.event.findUniqueOrThrow({ where: { event_id: id } });
+    const existing = await this.prisma.event.findUnique({ where: { event_id: id } });
+
+    // Idempotent delete: nếu không còn sự kiện, trả về thông báo thay vì ném lỗi
+    if (!existing) {
+      return { message: `Event ${id} đã được xoá hoặc không tồn tại` };
+    }
+
     if (userId && existing.created_by !== userId) {
       throw new ForbiddenException('Bạn không có quyền xoá sự kiện này');
     }

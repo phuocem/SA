@@ -2,12 +2,14 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException } 
 import { randomUUID } from 'crypto';
 import { CacheService } from '../../infrastructure/cache/cache.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { OutboxService } from '../../infrastructure/messaging/outbox.service';
 
 @Injectable()
 export class RegistrationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cacheService: CacheService,
+    private readonly outboxService: OutboxService,
   ) {}
 
   private async ensureCancellationColumn() {
@@ -100,6 +102,21 @@ export class RegistrationsService {
 
     await this.cacheService.del(`events:${eventId}:registrations`);
 
+    // Emit registration created event
+    await this.outboxService.enqueue({
+      routingKey: 'registration.created',
+      aggregateType: 'registration',
+      aggregateId: created.registration_id,
+      payload: {
+        registration_id: created.registration_id,
+        event_id: created.event_id,
+        user_id: created.user_id,
+        status: created.status,
+        qr_code: created.qr_code,
+        created_at: created.created_at,
+      },
+    });
+
     return created;
   }
 
@@ -136,7 +153,27 @@ export class RegistrationsService {
       },
     });
 
+    if (!updated) {
+      throw new NotFoundException('Registration not found after cancel');
+    }
+
     await this.cacheService.del(`events:${eventId}:registrations`);
+
+    // Emit registration cancelled event
+    await this.outboxService.enqueue({
+      routingKey: 'registration.cancelled',
+      aggregateType: 'registration',
+      aggregateId: updated.registration_id,
+      payload: {
+        registration_id: updated.registration_id,
+        event_id: updated.event_id,
+        user_id: updated.user_id,
+        status: updated.status,
+        qr_code: updated.qr_code,
+        checked_in_at: updated.checked_in_at,
+        created_at: updated.created_at,
+      },
+    });
 
     return updated;
   }
